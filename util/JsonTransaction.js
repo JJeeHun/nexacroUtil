@@ -1,3 +1,4 @@
+/************************************* 의존성 없는 객체 *************************************/
 /**
  * nexacroQueryString -> query String 형태로 변환 로직 (구글 주어온 로직)
  * @param {Object} queryObject 
@@ -6,7 +7,7 @@
  * @returns
  * @desc 추후 교체 가능하게 function 화 시킴
  */
-function getUrl(url ,queryObject){
+function getQueryUrl(url ,queryObject){
     
     //넥사크로 런타임용 쿼리스트링 function
     const nexacroQueryString = (queryObject ,key ,aList) => {
@@ -36,6 +37,40 @@ function getUrl(url ,queryObject){
     else return browserUrl(url ,queryObject); //브라우저용
 }
 
+
+/**
+ * JSON 형태의 데이터를 Dataset 으로 변환한다.
+ * @param {nexacro.Dataset} ds 
+ * @param {Array Or Object} list 
+ * @desc - json data를 dataset 으로 변환
+ */
+function JsonToDataset( ds ,list ) {
+    /********** Variable Area **********/
+    const isArray = Array.isArray(list);                                //list가 아니면 object(단건) 확인용
+    const keys    = isArray ? Object.keys(list[0]) : Object.keys(list); //keys list == column list
+
+
+    /********** function Area **********/
+    //column Info
+    const getColumnInfo = () => `<ColumnInfo>${keys.map( key => `<Column id="${key}" type="STRING" size="255" />`).join('')}</ColumnInfo>`;
+    //row list
+    const getRows = () => list.map( row => getRow(row)).join('');
+    //first row
+    const getRow = (row) => '<Row>'+Object.keys(row).map( key => `<Col id="${key}">${row[key] || ''}</Col>`).join('')+'</Row>';
+
+
+    /********** Runnable Area **********/
+    const rows      = isArray ? getRows() : getRow(list);
+    const saveXML   = getColumnInfo() + `<Rows>${rows}</Rows>` ;
+    
+    //json -> dataset xml format을 dataset의 주입
+    ds.set_enableevent(false);
+    ds.loadXML(saveXML);	
+	ds.set_enableevent(true);
+}
+
+
+/************************************* 의존성 있는 객체 *************************************/
 /**
  * 제이쿼리의 ajax 같은 함수
  * @param {Object} obj 
@@ -56,7 +91,7 @@ function JsonTransactionCall(obj) {
     const headers = obj.headers || {};
     
     //GET 방식일 경우 쿼리 url에 쿼리스트링을 붙여서 전달
-    if(method == 'GET') url = getUrl(url ,data);
+    if(method == 'GET') url = getQueryUrl(url ,data);
 
 
     /********** function Area **********/
@@ -121,33 +156,22 @@ function JsonTransactionCall(obj) {
     });    
 }
 
+
 /**
- * JSON 형태의 데이터를 Dataset 으로 변환한다.
+ * 트랜잭션 call 후 dataset을 자동 convert 하고 promise를 return 해준다.
  * @param {nexacro.Dataset} ds 
- * @param {Array Or Object} list 
- * @desc - json data를 dataset 으로 변환
+ * @param {transaction info} obj 
+ * @returns 
  */
-function JsonToDataset( ds ,list ) {
-    /********** Variable Area **********/
-    const isArray = Array.isArray(list);                                //list가 아니면 object(단건) 확인용
-    const keys    = isArray ? Object.keys(list[0]) : Object.keys(list); //keys list == column list
+function TestDatasetTransaction( ds ,obj ) {
+    const defaultUrl = 'http://localhost:9091/SFD2022v1';
 
+    if(obj.url.indexOf('/') != 0) obj.url = defaultUrl + '/' +obj.url;
+    else obj.url = defaultUrl + obj.url;
 
-    /********** function Area **********/
-    //column Info
-    const getColumnInfo = () => `<ColumnInfo>${keys.map( key => `<Column id="${key}" type="STRING" size="255" />`).join('')}</ColumnInfo>`;
-    //row list
-    const getRows = () => list.map( row => getRow(row)).join('');
-    //first row
-    const getRow = (row) => '<Row>'+Object.keys(row).map( key => `<Col id="${key}">${row[key] || ''}</Col>`).join('')+'</Row>';
-
-
-    /********** Runnable Area **********/
-    const rows      = isArray ? getRows() : getRow(list);
-    const saveXML   = getColumnInfo() + `<Rows>${rows}</Rows>` ;
-    
-    //json -> dataset xml format을 dataset의 주입
-    ds.set_enableevent(false);
-    ds.loadXML(saveXML);	
-	ds.set_enableevent(true);
+    return JsonTransactionCall(obj).then((res) => {
+        var {data ,JsonToDataset} = res;
+        JsonToDataset( ds ,data );
+        return res;
+    });
 }
